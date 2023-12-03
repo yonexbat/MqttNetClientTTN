@@ -1,0 +1,16 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TtnClient", "TtnClient.csproj", "{359D457C-DD5C-45B0-A730-C4EAFDE5CBBB}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{359D457C-DD5C-45B0-A730-C4EAFDE5CBBB}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{359D457C-DD5C-45B0-A730-C4EAFDE5CBBB}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{359D457C-DD5C-45B0-A730-C4EAFDE5CBBB}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{359D457C-DD5C-45B0-A730-C4EAFDE5CBBB}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+EndGlobal
