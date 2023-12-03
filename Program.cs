@@ -1,6 +1,7 @@
 ﻿// See https://aka.ms/new-console-template for more information
 
 using System.Reflection;
+using System.Text;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using MQTTnet;
@@ -26,9 +27,18 @@ using ILoggerFactory factory = LoggerFactory.Create(builder => builder.AddConsol
 ILogger<TtnMqttClient> logger = factory.CreateLogger<TtnMqttClient>();
 
 TtnMqttClient client = new TtnMqttClient(options, new MqttFactory(), logger);
-await client.Connect();
 
-Console.ReadLine();
+await client.Connect(async message =>
+{
+    string? payload = message.InnerPayload switch
+    {
+        not null => Encoding.UTF8.GetString(message.InnerPayload),
+        _ => string.Empty
+    };
+    
+    Console.WriteLine($"Got message, topic: {message.Topic}, payload: {payload}");
+});
+
 
 Console.WriteLine("By by");
 
