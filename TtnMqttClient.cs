@@ -1,4 +1,3 @@
-using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
@@ -9,7 +8,18 @@ namespace TtnClient;
 
 public class TtnMqttClient(TtnClientOptions options, MqttFactory factory, ILogger<TtnMqttClient> logger)
 {
-   public async Task Connect(Func<Message, Task> callback)
+   
+   public event Func<Message, Task>? MessageEvent;
+
+   public Task StartClient()
+   {
+      return Task.Run(async () =>
+      {
+         await Connect();
+      });
+   }
+   
+   private async Task Connect()
    {
       using var mqttClient =  factory.CreateMqttClient();
       string url = $"{options.Region}.cloud.thethings.network";
@@ -28,7 +38,7 @@ public class TtnMqttClient(TtnClientOptions options, MqttFactory factory, ILogge
          throw new Exception(responseAsString);
       }
       
-      mqttClient.ApplicationMessageReceivedAsync += e => HandleMessage(e, callback);
+      mqttClient.ApplicationMessageReceivedAsync += e => HandleMessage(e);
       
       var mqttSubscribeOptions = factory.CreateSubscribeOptionsBuilder()
          .WithTopicFilter(
@@ -44,7 +54,7 @@ public class TtnMqttClient(TtnClientOptions options, MqttFactory factory, ILogge
       await Task.Delay(1000000);
    }
 
-   private async Task HandleMessage(MqttApplicationMessageReceivedEventArgs e, Func<Message, Task> callback)
+   private async Task HandleMessage(MqttApplicationMessageReceivedEventArgs e)
    {
       logger.LogInformation("Got message:");
       var payload = e.ApplicationMessage?.PayloadSegment.Array;
@@ -55,9 +65,22 @@ public class TtnMqttClient(TtnClientOptions options, MqttFactory factory, ILogge
       }
       
       Message message = new Message(e.ApplicationMessage?.Topic ?? string.Empty, innerPayload, payload);
-      logger.LogDebug("Calling callback");
-      await callback(message);
-      logger.LogDebug("Callback called");
+      
+      await FireEvent(message);
+   }
+
+   private async Task FireEvent(Message message)
+   {
+      logger.LogDebug("Calling subscribers");
+      if (this.MessageEvent is not null)
+      {
+         await this.MessageEvent.Invoke(message);
+      }
+      else
+      {
+         logger.LogDebug("No subscribers registered");
+      }
+      logger.LogDebug("Subscribers called");
    }
 
    private byte[]? HandlePayload(byte[] payload)

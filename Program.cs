@@ -28,7 +28,15 @@ ILogger<TtnMqttClient> logger = factory.CreateLogger<TtnMqttClient>();
 
 TtnMqttClient client = new TtnMqttClient(options, new MqttFactory(), logger);
 
-await client.Connect(async message =>
+client.MessageEvent += GotMessage;
+
+Console.WriteLine("Press any key to terminate");
+var res = client.StartClient();
+Console.ReadLine();
+
+Console.WriteLine("By by");
+
+static async Task GotMessage(Message message)
 {
     string? payload = message.InnerPayload switch
     {
@@ -37,10 +45,7 @@ await client.Connect(async message =>
     };
     
     Console.WriteLine($"Got message, topic: {message.Topic}, payload: {payload}");
-});
-
-
-Console.WriteLine("By by");
+}
 
 static IConfiguration GetConfiguration(string[] args)
 {
