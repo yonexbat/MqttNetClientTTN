@@ -1,8 +1,10 @@
+using System.Collections.Concurrent;
 using System.Text;
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using MQTTnet;
 using MQTTnet.Client;
+using MQTTnet.Extensions.ManagedClient;
 
 namespace TtnClient;
 
@@ -10,6 +12,12 @@ public class TtnMqttClient(TtnClientOptions options, MqttFactory factory, ILogge
 {
    
    public event Func<Message, Task>? MessageEvent;
+
+   private IManagedMqttClient? _client;
+   
+   private SemaphoreSlim _semaphore = new SemaphoreSlim(1);
+   private IList<MessageContainer> _messagesToSend = new List<MessageContainer>();
+   
 
    public Task StartClient()
    {
@@ -21,7 +29,7 @@ public class TtnMqttClient(TtnClientOptions options, MqttFactory factory, ILogge
    
    private async Task Connect()
    {
-      using var mqttClient =  factory.CreateMqttClient();
+      _client =  factory.CreateManagedMqttClient();
       string url = $"{options.Region}.cloud.thethings.network";
       
       var mqttClientOptions = new MqttClientOptionsBuilder()
@@ -29,29 +37,41 @@ public class TtnMqttClient(TtnClientOptions options, MqttFactory factory, ILogge
          .WithCredentials(options.UserId, options.AccessKey)
          .Build();
       
-      var response = await mqttClient.ConnectAsync(mqttClientOptions, CancellationToken.None);
+      var managedMqttClientOptions = new ManagedMqttClientOptionsBuilder()
+         .WithClientOptions(mqttClientOptions)
+         .Build();
+      
+      await _client.StartAsync(managedMqttClientOptions);
 
+      /*
       if (response.ResultCode != MqttClientConnectResultCode.Success)
       {
          var responseAsString = JsonSerializer.Serialize(response);
          logger.LogError("Could not connect. Response: {response}", responseAsString);
          throw new Exception(responseAsString);
-      }
+      }*/
       
-      mqttClient.ApplicationMessageReceivedAsync += e => HandleMessage(e);
-      
-      var mqttSubscribeOptions = factory.CreateSubscribeOptionsBuilder()
-         .WithTopicFilter(
-            f =>
-            {
-               f.WithTopic("#");
-            })
-         .Build();
+      _client.ApplicationMessageReceivedAsync += HandleMessage;
 
-      await mqttClient.SubscribeAsync(mqttSubscribeOptions, CancellationToken.None);
+      await _client.SubscribeAsync("#");
       
       logger.LogInformation("Waiting for messages");
-      await Task.Delay(1000000);
+      while (true)
+      {
+         await Task.Delay(1000);
+         await SendMessages();
+      }
+   }
+
+   private async Task SendMessages()
+   {
+      await _semaphore.WaitAsync();
+      foreach (var message in _messagesToSend)
+      {
+         await PublishInternal(message.Device, message.Payload);
+      }
+      _messagesToSend.Clear();
+      _semaphore.Release();
    }
 
    private async Task HandleMessage(MqttApplicationMessageReceivedEventArgs e)
@@ -82,6 +102,48 @@ public class TtnMqttClient(TtnClientOptions options, MqttFactory factory, ILogge
       }
       logger.LogDebug("Subscribers called");
    }
+   
+   public async Task Publish(string device, byte[] payload)
+   {
+      await _semaphore.WaitAsync();
+      this._messagesToSend.Add(new MessageContainer(device, payload));
+      _semaphore.Release();
+   }   
+   
+   private async Task PublishInternal(string device, byte[] payload)
+   {
+      if (_client is null)
+      {
+         throw new InvalidOperationException("Call start-server first");
+      }
+      
+      string payloadAsBase64 = Convert.ToBase64String(payload);
+      DownLinkMessage message = new DownLinkMessage
+      {
+         DownLinks = new List<DownLink>()
+         {
+            new DownLink
+            {
+               FrmPayload = payloadAsBase64,
+               Priority = "NORMAL",
+               FPort = 15,
+               CorrelationIds = new List<string>(){ Guid.NewGuid().ToString()},
+            },
+         },
+      };
+      string messageAsString = JsonSerializer.Serialize(message);
+      string topic = $"v3/{options.UserId}/devices/{device}/down/push";
+      logger.LogDebug("Topic: {topic}", topic);
+      
+      
+      var applicationMessage = new MqttApplicationMessageBuilder()
+         .WithTopic($"v3/{options.UserId}/devices/{device}/down/push")
+         .WithPayload(messageAsString)
+         .Build();
+
+
+      await _client.EnqueueAsync(applicationMessage);
+   }   
 
    private byte[]? HandlePayload(byte[] payload)
    {

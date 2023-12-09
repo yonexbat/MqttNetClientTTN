@@ -32,7 +32,22 @@ client.MessageEvent += GotMessage;
 
 Console.WriteLine("Press any key to terminate");
 var res = client.StartClient();
-Console.ReadLine();
+
+while (true)
+{
+    var line = Console.ReadLine();
+    
+    if (line == "exit")
+    {
+        break;
+    }
+
+    if (line is not null)
+    {
+        var bytesToSend = Encoding.UTF8.GetBytes(line);
+        await client.Publish(deviceId, bytesToSend);
+    }
+}
 
 Console.WriteLine("By by");
 
