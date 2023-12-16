@@ -1,5 +1,6 @@
 using System.Text;
 using System.Text.Json;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using MQTTnet;
@@ -8,7 +9,7 @@ using MQTTnet.Extensions.ManagedClient;
 
 namespace TtnClient;
 
-public class TtnMqttClient(IOptions<TtnClientOptions> options, MqttFactory factory, ILogger<TtnMqttClient> logger)
+public class TtnMqttClient(IOptions<TtnClientOptions> options, MqttFactory factory, ILogger<TtnMqttClient> logger) : BackgroundService
 {
     private readonly Queue<MessageContainer> _messagesToSend = new();
     private readonly SemaphoreSlim _semaphore = new(1);
@@ -20,12 +21,8 @@ public class TtnMqttClient(IOptions<TtnClientOptions> options, MqttFactory facto
     public event Func<Message, Task>? MessageEvent;
 
     private volatile bool _exitPending = false;
-
-    public Task StartClient()
-    {
-        return Task.Run(async () => { await Connect(); });
-    }
     
+
     public async Task Publish(string device, byte[] payload)
     {
         await _semaphore.WaitAsync();
@@ -51,12 +48,16 @@ public class TtnMqttClient(IOptions<TtnClientOptions> options, MqttFactory facto
 
     private async Task Connect()
     {
+        var ttnOptions = options.Value ?? throw new ArgumentException("Options value must not be null");
+
         _client = factory.CreateManagedMqttClient();
-        var url = $"{options.Value.Region}.cloud.thethings.network";
+
+        var url = $"{ttnOptions.Region ?? throw new ArgumentException("Region")}.cloud.thethings.network";
 
         var mqttClientOptions = new MqttClientOptionsBuilder()
             .WithTcpServer(url)
-            .WithCredentials(options.Value.UserId, options.Value.AccessKey)
+            .WithCredentials(ttnOptions.UserId ?? throw new ArgumentException("UserId"),
+                ttnOptions.AccessKey ?? throw new ArgumentException("AccessKey"))
             .Build();
 
         var managedMqttClientOptions = new ManagedMqttClientOptionsBuilder()
@@ -82,6 +83,7 @@ public class TtnMqttClient(IOptions<TtnClientOptions> options, MqttFactory facto
     private async Task SendMessages()
     {
         await _semaphore.WaitAsync();
+        logger.LogDebug("Sending enqueued messages.");
         try
         {
             while (_messagesToSend.Count > 0)
@@ -121,7 +123,7 @@ public class TtnMqttClient(IOptions<TtnClientOptions> options, MqttFactory facto
             }
             catch (Exception ex)
             {
-                logger.LogError("Error calling handler. {ex}, {message}", ex, ex.Message);
+                logger.LogError(ex, ex.Message);
             }
         }
         else
@@ -183,5 +185,20 @@ public class TtnMqttClient(IOptions<TtnClientOptions> options, MqttFactory facto
 
         logger.LogInformation("Got inner payload: {0}", innerPayload is not null);
         return innerPayload;
+    }
+
+    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
+    {
+        logger.LogDebug("ExecuteAsync");
+        try
+        {
+            await Connect();
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, ex.Message);
+            throw;
+        }
+        logger.LogDebug("Done");
     }
 }

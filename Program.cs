@@ -3,7 +3,8 @@
 using System.Reflection;
 using System.Text;
 using Microsoft.Extensions.Configuration;
-using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 using MQTTnet;
 using TtnClient;
 
@@ -11,27 +12,31 @@ using TtnClient;
 Console.WriteLine("Starting up MQTT Client for the things network");
 IConfiguration config = GetConfiguration(args);
 
-var userId = config.GetValue<string>("userId") ?? throw new ArgumentNullException("userId");
-var accessKey = config.GetValue<string>("accessKey") ?? throw new ArgumentNullException("accessKey");
-var region = config.GetValue<string>("region") ?? throw new ArgumentNullException("region");
+
+var host = Host.CreateDefaultBuilder(args)
+    .ConfigureServices((context, services) =>
+    {
+        services
+            .Configure<TtnClientOptions>(config.GetSection("ClientOptions"));
+
+        services
+            .AddSingleton<MqttFactory>()
+            .AddSingleton<TtnMqttClient>();
+
+        services
+            .AddHostedService<TtnMqttClient>(serviceProvider => serviceProvider.GetRequiredService<TtnMqttClient>());
+
+    })
+    .Build();
+
+await host.StartAsync();
+
 var deviceId = config.GetValue<string>("deviceId") ?? throw new ArgumentNullException("deviceId");
-
-var options = new TtnClientOptions()
-{
-    Region = region,
-    AccessKey = accessKey,
-    UserId = userId,
-};
-
-using ILoggerFactory factory = LoggerFactory.Create(builder => builder.AddConsole());
-ILogger<TtnMqttClient> logger = factory.CreateLogger<TtnMqttClient>();
-
-TtnMqttClient client = new TtnMqttClient(new OptionsImpl<TtnClientOptions>(options), new MqttFactory(), logger);
+var client = host.Services.GetRequiredService<TtnMqttClient>();
 
 client.MessageEvent += GotMessage;
 
 Console.WriteLine("Press any key to terminate");
-var res = client.StartClient();
 
 while (true)
 {
@@ -39,6 +44,7 @@ while (true)
     
     if (line == "exit")
     {
+        await client.Stop();
         break;
     }
 
@@ -49,7 +55,7 @@ while (true)
     }
 }
 await client.Stop();
-await res;
+await host.StopAsync();
 
 Console.WriteLine("By by");
 
