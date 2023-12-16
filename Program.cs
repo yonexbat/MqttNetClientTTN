@@ -53,9 +53,11 @@ await res;
 
 Console.WriteLine("By by");
 
+#pragma warning disable 1998
 static async Task GotMessage(Message message)
+#pragma warning restore
 {
-    string? payload = message.InnerPayload switch
+    string payload = message.InnerPayload switch
     {
         not null => Encoding.UTF8.GetString(message.InnerPayload),
         _ => string.Empty
