@@ -48,6 +48,8 @@ while (true)
         await client.Publish(deviceId, bytesToSend);
     }
 }
+await client.Stop();
+await res;
 
 Console.WriteLine("By by");
 
