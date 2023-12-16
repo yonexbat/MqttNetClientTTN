@@ -26,7 +26,7 @@ var options = new TtnClientOptions()
 using ILoggerFactory factory = LoggerFactory.Create(builder => builder.AddConsole());
 ILogger<TtnMqttClient> logger = factory.CreateLogger<TtnMqttClient>();
 
-TtnMqttClient client = new TtnMqttClient(options, new MqttFactory(), logger);
+TtnMqttClient client = new TtnMqttClient(new OptionsImpl<TtnClientOptions>(options), new MqttFactory(), logger);
 
 client.MessageEvent += GotMessage;
 

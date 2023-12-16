@@ -1,13 +1,14 @@
 using System.Text;
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using MQTTnet;
 using MQTTnet.Client;
 using MQTTnet.Extensions.ManagedClient;
 
 namespace TtnClient;
 
-public class TtnMqttClient(TtnClientOptions options, MqttFactory factory, ILogger<TtnMqttClient> logger)
+public class TtnMqttClient(IOptions<TtnClientOptions> options, MqttFactory factory, ILogger<TtnMqttClient> logger)
 {
     private readonly Queue<MessageContainer> _messagesToSend = new();
     private readonly SemaphoreSlim _semaphore = new(1);
@@ -51,11 +52,11 @@ public class TtnMqttClient(TtnClientOptions options, MqttFactory factory, ILogge
     private async Task Connect()
     {
         _client = factory.CreateManagedMqttClient();
-        var url = $"{options.Region}.cloud.thethings.network";
+        var url = $"{options.Value.Region}.cloud.thethings.network";
 
         var mqttClientOptions = new MqttClientOptionsBuilder()
             .WithTcpServer(url)
-            .WithCredentials(options.UserId, options.AccessKey)
+            .WithCredentials(options.Value.UserId, options.Value.AccessKey)
             .Build();
 
         var managedMqttClientOptions = new ManagedMqttClientOptionsBuilder()
@@ -154,12 +155,12 @@ public class TtnMqttClient(TtnClientOptions options, MqttFactory factory, ILogge
             },
         };
         var messageAsString = JsonSerializer.Serialize(message);
-        var topic = $"v3/{options.UserId}/devices/{device}/down/push";
+        var topic = $"v3/{options.Value.UserId}/devices/{device}/down/push";
         logger.LogDebug("Topic: {topic}", topic);
 
 
         var applicationMessage = new MqttApplicationMessageBuilder()
-            .WithTopic($"v3/{options.UserId}/devices/{device}/down/push")
+            .WithTopic($"v3/{options.Value.UserId}/devices/{device}/down/push")
             .WithPayload(messageAsString)
             .Build();
 
