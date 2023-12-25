@@ -54,7 +54,6 @@ while (true)
         await client.Publish(deviceId, bytesToSend);
     }
 }
-await client.Stop();
 await host.StopAsync();
 
 Console.WriteLine("By by");

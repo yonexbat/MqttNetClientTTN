@@ -43,6 +43,7 @@ public class TtnMqttClient(IOptions<TtnClientOptions> options, MqttFactory facto
     {
         await _semaphore.WaitAsync();
         _exitPending = true;
+        _wakeUpSemaphore.Release();
         _semaphore.Release();
     }
 
